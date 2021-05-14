@@ -372,7 +372,50 @@ class DLCLiveGUI(object):
 
         settings_window.mainloop()
 
+
     def get_cam_args(self):
+        args = self.get_cam_pos_args()
+
+        # TODO This is needed to support my BaslerCameraDLC class
+        # which uses kwargs instead of args.
+        # That breaks the inspect.getfullargspec indices used in get_cam_pos_args
+
+        if self.get_current_camera()["type"] == "BaslerCameraDLC" or args is None:
+            args = self.get_cam_kwargs()
+
+        return args
+
+    def get_cam_kwargs(self):
+        this_cam = self.get_current_camera()
+        cam_obj = getattr(camera, this_cam["type"])
+        arg_restrict = cam_obj.arg_restrictions()
+
+        cam_args = inspect.getfullargspec(cam_obj)
+        n_args = len(cam_args[4])
+        n_vals = len(cam_args[5])
+ 
+        arg_names = []
+        arg_vals = []
+        arg_dtype = []
+        for i in range(n_args):
+            arg_names.append(cam_args[4][i])
+
+            if arg_names[i] in this_cam["params"].keys():
+                val = this_cam["params"][arg_names[i]]
+            else:
+                val = None if i < n_args - n_vals else cam_args[5][cam_args[4][n_vals - n_args + i]]
+            arg_vals.append(val)
+
+            dt_val = val if i < n_args - n_vals else cam_args[5][cam_args[4][n_vals - n_args + i]]
+            dt = type(dt_val) if type(dt_val) is not list else type(dt_val[0])
+            arg_dtype.append(dt)
+
+        return arg_names, arg_vals, arg_dtype, arg_restrict
+
+
+
+
+    def get_cam_pos_args(self):
         """ Get arguments for the new camera
         """
 
@@ -381,8 +424,12 @@ class DLCLiveGUI(object):
         arg_restrict = cam_obj.arg_restrictions()
 
         cam_args = inspect.getfullargspec(cam_obj)
-        n_args = len(cam_args[0][1:])
-        n_vals = len(cam_args[3])
+        try:
+            n_args = len(cam_args[0][1:])
+            n_vals = len(cam_args[3])
+        except TypeError:
+            return None
+ 
         arg_names = []
         arg_vals = []
         arg_dtype = []
@@ -1093,6 +1140,8 @@ class DLCLiveGUI(object):
         Label(
             self.session_setup_window, text="Setting up session, please wait..."
         ).pack()
+
+
         self.session_setup_window.after(10, self.start_writer)
         self.session_setup_window.mainloop()
 
@@ -1131,7 +1180,6 @@ class DLCLiveGUI(object):
                 return
 
         ### start writer
-
         ret = self.cam_pose_proc.start_writer_process(self.base_name)
 
         self.session_setup_window.destroy()
